@@ -147,7 +147,7 @@ export default function GroupedSelect({
                     {Object.entries(groupedOptions).map(([group, groupOptions]) => (
                         <div key={group}>
                             {/* 分组标题 */}
-                            <div className="px-3 py-2 text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider bg-gray-50 dark:bg-gray-900/50 sticky top-0 z-10">
+                            <div className="px-3 py-1.5 text-[9px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider bg-gray-50 dark:bg-gray-900/50 sticky top-0 z-10">
                                 {group}
                             </div>
 
@@ -157,8 +157,9 @@ export default function GroupedSelect({
                                     key={option.value}
                                     type="button"
                                     onClick={() => handleSelect(option.value)}
+                                    title={option.label}
                                     className={cn(
-                                        'w-full px-3 py-2 text-left text-xs font-mono',
+                                        'w-full px-3 py-1.5 text-left text-[10px] font-mono',
                                         'flex items-center justify-between gap-2',
                                         'transition-colors duration-150',
                                         'hover:bg-blue-50 dark:hover:bg-blue-900/20',
@@ -169,7 +170,7 @@ export default function GroupedSelect({
                                 >
                                     <span className="truncate">{option.label}</span>
                                     {option.value === value && (
-                                        <Check size={14} className="text-blue-600 dark:text-blue-400 flex-shrink-0" />
+                                        <Check size={12} className="text-blue-600 dark:text-blue-400 flex-shrink-0" />
                                     )}
                                 </button>
                             ))}
