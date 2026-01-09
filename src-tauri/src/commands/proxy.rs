@@ -137,7 +137,6 @@ pub async fn clear_proxy_session_bindings(
     let instance_lock = state.instance.read().await;
     if let Some(instance) = instance_lock.as_ref() {
         instance.token_manager.clear_all_sessions();
-        instance.axum_server.clear_session_bindings().await;
         Ok(())
     } else {
         Err("服务未运行".to_string())
