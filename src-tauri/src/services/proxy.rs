@@ -66,7 +66,7 @@ impl ProxyService {
         config: ProxyConfig,
         app_handle: Option<AppHandle>,
     ) -> Result<ProxyStatus, String> {
-        let mut instance_lock = self.instance.write().await;
+        let instance_lock = self.instance.write().await;
         if instance_lock.is_some() { return Err("服务已在运行中".to_string()); }
 
         {
@@ -91,7 +91,7 @@ impl ProxyService {
         config: ProxyConfig,
         _app_handle: Option<()>,
     ) -> Result<ProxyStatus, String> {
-        let mut instance_lock = self.instance.write().await;
+        let instance_lock = self.instance.write().await;
         if instance_lock.is_some() { return Err("服务已在运行中".to_string()); }
 
         {

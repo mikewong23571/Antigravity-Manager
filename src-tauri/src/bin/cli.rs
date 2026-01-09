@@ -2,9 +2,7 @@ use clap::{Parser, Subcommand};
 use antigravity_tools_lib::{
     modules::{account, config},
     services::proxy::ProxyService,
-    proxy::ProxyConfig,
 };
-use std::sync::Arc;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
