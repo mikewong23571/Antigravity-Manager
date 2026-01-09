@@ -10,6 +10,8 @@ export interface ProxyConfig {
     port: number;
     api_key: string;
     auto_start: boolean;
+    anthropic_mapping?: Record<string, string>;
+    openai_mapping?: Record<string, string>;
     custom_mapping?: Record<string, string>;
     request_timeout: number;
     model_strategies?: Record<string, ModelStrategy>;

@@ -18,6 +18,7 @@ import {
     Zap,
     ArrowRight,
     Sparkles,
+    Wind,
     Code,
     Activity,
     Check,
@@ -257,13 +258,19 @@ export default function ApiProxy() {
     };
 
     // 专门处理模型映射的热更新 (全量)
-    const handleMappingUpdate = async (type: 'custom', key: string, value: string) => {
+    const handleMappingUpdate = async (type: 'anthropic' | 'openai' | 'custom', key: string, value: string) => {
         if (!appConfig) return;
 
         console.log('[DEBUG] handleMappingUpdate called:', { type, key, value });
 
         const newConfig = { ...appConfig.proxy };
-        newConfig.custom_mapping = { ...(newConfig.custom_mapping || {}), [key]: value };
+        if (type === 'anthropic') {
+            newConfig.anthropic_mapping = { ...(newConfig.anthropic_mapping || {}), [key]: value };
+        } else if (type === 'openai') {
+            newConfig.openai_mapping = { ...(newConfig.openai_mapping || {}), [key]: value };
+        } else {
+            newConfig.custom_mapping = { ...(newConfig.custom_mapping || {}), [key]: value };
+        }
 
         try {
             await invoke('update_model_mapping', { config: newConfig });
@@ -285,9 +292,18 @@ export default function ApiProxy() {
         if (!appConfig) return;
         setIsResetConfirmOpen(false);
 
-        // 恢复到默认映射值 (空映射)
+        // 恢复到默认映射值
         const newConfig = {
             ...appConfig.proxy,
+            anthropic_mapping: {
+                'claude-4.5-series': 'gemini-3-pro-high',
+                'claude-3.5-series': 'claude-sonnet-4-5-thinking'
+            },
+            openai_mapping: {
+                'gpt-4-series': 'gemini-3-pro-high',
+                'gpt-4o-series': 'gemini-3-flash',
+                'gpt-5-series': 'gemini-3-flash'
+            },
             custom_mapping: {}
         };
 
