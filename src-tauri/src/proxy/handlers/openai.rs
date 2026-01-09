@@ -164,7 +164,7 @@ pub async fn handle_chat_completions(
                         .header("Cache-Control", "no-cache")
                         .header("Connection", "keep-alive")
                         .header("X-Account-Email", &email)
-                        .header("X-Mapped-Model", &mapped_model)
+                        .header("X-Mapped-Model", mapped_model.as_str())
                         .body(body)
                         .unwrap()
                         .into_response());
