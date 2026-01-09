@@ -148,6 +148,7 @@ impl ProxyService {
                 config.anthropic_mapping.clone(),
                 config.openai_mapping.clone(),
                 config.custom_mapping.clone(),
+                config.model_strategies.clone(),
                 config.request_timeout,
                 config.upstream_proxy.clone(),
                 ProxySecurityConfig::from_proxy_config(&config),

@@ -82,6 +82,59 @@ impl Default for ZaiMcpConfig {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelPriority {
+    AccuracyFirst,
+    CapacityFirst,
+}
+
+impl Default for ModelPriority {
+    fn default() -> Self {
+        Self::AccuracyFirst
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelStickiness {
+    Strong,
+    Weak,
+}
+
+impl Default for ModelStickiness {
+    fn default() -> Self {
+        Self::Strong
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelFallbackPolicy {
+    #[serde(default)]
+    pub model_priority: ModelPriority,
+    #[serde(default)]
+    pub stickiness: ModelStickiness,
+    #[serde(default)]
+    pub max_model_hops: Option<usize>,
+}
+
+impl Default for ModelFallbackPolicy {
+    fn default() -> Self {
+        Self {
+            model_priority: ModelPriority::AccuracyFirst,
+            stickiness: ModelStickiness::Strong,
+            max_model_hops: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelStrategy {
+    pub candidates: Vec<String>,
+    #[serde(default)]
+    pub policy: ModelFallbackPolicy,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ZaiConfig {
     #[serde(default)]
@@ -182,6 +235,10 @@ pub struct ProxyConfig {
     #[serde(default = "default_request_timeout")]
     pub request_timeout: u64,
 
+    /// 可复用的模型策略池 (strategy_id -> strategy)
+    #[serde(default)]
+    pub model_strategies: std::collections::HashMap<String, ModelStrategy>,
+
     /// 是否开启请求日志记录 (监控)
     #[serde(default)]
     pub enable_logging: bool,
@@ -223,6 +280,7 @@ impl Default for ProxyConfig {
             auto_start: false,
             custom_mapping: std::collections::HashMap::new(),
             request_timeout: default_request_timeout(),
+            model_strategies: std::collections::HashMap::new(),
             enable_logging: false, // 默认关闭，节省性能
             upstream_proxy: UpstreamProxyConfig::default(),
             zai: ZaiConfig::default(),

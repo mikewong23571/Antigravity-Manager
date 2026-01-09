@@ -1,6 +1,7 @@
 // 模型名称映射
 use std::collections::HashMap;
 use once_cell::sync::Lazy;
+use crate::proxy::config::{ModelFallbackPolicy, ModelPriority, ModelStrategy};
 
 static CLAUDE_TO_GEMINI: Lazy<HashMap<&'static str, &'static str>> = Lazy::new(|| {
     let mut m = HashMap::new();
@@ -177,6 +178,102 @@ pub fn resolve_model_route(
     result
 }
 
+#[derive(Debug, Clone)]
+pub struct ModelRoutePlan {
+    pub primary: String,
+    pub fallbacks: Vec<String>,
+    pub policy: ModelFallbackPolicy,
+    pub strategy_id: Option<String>,
+}
+
+impl ModelRoutePlan {
+    pub fn candidates(&self) -> Vec<String> {
+        let mut list = Vec::new();
+        if !self.primary.is_empty() {
+            list.push(self.primary.clone());
+        }
+        for fb in &self.fallbacks {
+            if !fb.is_empty() {
+                list.push(fb.clone());
+            }
+        }
+        list
+    }
+
+    pub fn max_models(&self) -> usize {
+        let count = self.candidates().len();
+        match self.policy.max_model_hops {
+            Some(hops) if hops > 0 => hops.min(count),
+            _ => count.max(1),
+        }
+    }
+
+    pub fn is_capacity_first(&self) -> bool {
+        self.policy.model_priority == ModelPriority::CapacityFirst
+    }
+}
+
+fn extract_strategy_id(value: &str) -> Option<&str> {
+    value.strip_prefix("strategy:")
+}
+
+pub fn resolve_model_route_plan(
+    original_model: &str,
+    custom_mapping: &std::collections::HashMap<String, String>,
+    openai_mapping: &std::collections::HashMap<String, String>,
+    anthropic_mapping: &std::collections::HashMap<String, String>,
+    model_strategies: &std::collections::HashMap<String, ModelStrategy>,
+    apply_claude_family_mapping: bool,
+) -> ModelRoutePlan {
+    let target = resolve_model_route(
+        original_model,
+        custom_mapping,
+        openai_mapping,
+        anthropic_mapping,
+        apply_claude_family_mapping,
+    );
+
+    if let Some(strategy_id) = extract_strategy_id(&target) {
+        if let Some(strategy) = model_strategies.get(strategy_id) {
+            let mut candidates: Vec<String> = strategy
+                .candidates
+                .iter()
+                .map(|c| c.trim().to_string())
+                .filter(|c| !c.is_empty() && !c.starts_with("strategy:"))
+                .collect();
+            if !candidates.is_empty() {
+                let primary = candidates.remove(0);
+                return ModelRoutePlan {
+                    primary,
+                    fallbacks: candidates,
+                    policy: strategy.policy.clone(),
+                    strategy_id: Some(strategy_id.to_string()),
+                };
+            }
+            crate::modules::logger::log_warn(&format!(
+                "[Router] Strategy '{}' has no valid candidates, falling back to default mapping.",
+                strategy_id
+            ));
+        } else {
+            crate::modules::logger::log_warn(&format!(
+                "[Router] Strategy '{}' not found, falling back to default mapping.",
+                strategy_id
+            ));
+        }
+    }
+
+    ModelRoutePlan {
+        primary: if target.starts_with("strategy:") {
+            map_claude_model_to_gemini(original_model)
+        } else {
+            target
+        },
+        fallbacks: Vec::new(),
+        policy: ModelFallbackPolicy::default(),
+        strategy_id: None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -200,5 +297,61 @@ mod tests {
             map_claude_model_to_gemini("unknown-model"),
             "claude-sonnet-4-5"
         );
+    }
+
+    #[test]
+    fn test_strategy_route_plan_resolves_candidates_and_policy() {
+        let mut custom_mapping = HashMap::new();
+        custom_mapping.insert("gpt-4".to_string(), "strategy:test-strategy".to_string());
+
+        let mut strategies = HashMap::new();
+        strategies.insert(
+            "test-strategy".to_string(),
+            ModelStrategy {
+                candidates: vec![
+                    "gemini-3-pro-high".to_string(),
+                    "gemini-3-flash".to_string(),
+                ],
+                policy: ModelFallbackPolicy {
+                    model_priority: ModelPriority::CapacityFirst,
+                    stickiness: crate::proxy::config::ModelStickiness::Weak,
+                    max_model_hops: Some(1),
+                },
+            },
+        );
+
+        let plan = resolve_model_route_plan(
+            "gpt-4",
+            &custom_mapping,
+            &HashMap::new(),
+            &HashMap::new(),
+            &strategies,
+            false,
+        );
+
+        assert_eq!(plan.primary, "gemini-3-pro-high");
+        assert_eq!(plan.fallbacks, vec!["gemini-3-flash".to_string()]);
+        assert_eq!(plan.strategy_id.as_deref(), Some("test-strategy"));
+        assert!(plan.is_capacity_first());
+        assert_eq!(plan.max_models(), 1);
+    }
+
+    #[test]
+    fn test_strategy_route_plan_missing_strategy_falls_back() {
+        let mut custom_mapping = HashMap::new();
+        custom_mapping.insert("claude-3-5-sonnet-20241022".to_string(), "strategy:missing".to_string());
+
+        let plan = resolve_model_route_plan(
+            "claude-3-5-sonnet-20241022",
+            &custom_mapping,
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            false,
+        );
+
+        assert_eq!(plan.primary, "claude-sonnet-4-5");
+        assert!(plan.fallbacks.is_empty());
+        assert!(plan.strategy_id.is_none());
     }
 }
