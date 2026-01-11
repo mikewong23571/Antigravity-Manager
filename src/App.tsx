@@ -100,6 +100,8 @@ function App() {
         const shouldCheck = await invoke<boolean>('should_check_updates');
         if (shouldCheck) {
           setShowUpdateNotification(true);
+          // 更新最后检查时间，防止下次启动立即弹出
+          await invoke('update_last_check_time');
         }
       } catch (error) {
         console.error('Failed to check update settings:', error);

@@ -96,6 +96,7 @@ pub fn get_state_db_path() -> Result<PathBuf, String> {
 }
 
 /// 备份 storage.json，返回备份文件路径
+#[allow(dead_code)]
 pub fn backup_storage(storage_path: &Path) -> Result<PathBuf, String> {
     if !storage_path.exists() {
         return Err(format!("storage.json 不存在: {:?}", storage_path));
@@ -220,6 +221,7 @@ pub fn write_profile(storage_path: &Path, profile: &DeviceProfile) -> Result<(),
 }
 
 /// 仅补充/同步 serviceMachineId，不改动其他字段
+#[allow(dead_code)]
 pub fn sync_service_machine_id(storage_path: &Path, service_id: &str) -> Result<(), String> {
     let content =
         fs::read_to_string(storage_path).map_err(|e| format!("读取 storage.json 失败: {}", e))?;
@@ -243,6 +245,7 @@ pub fn sync_service_machine_id(storage_path: &Path, service_id: &str) -> Result<
 }
 
 /// 从现有 storage.json 读取 serviceMachineId（无则用 telemetry.devDeviceId），回写缺失项并同步 state.vscdb
+#[allow(dead_code)]
 pub fn sync_service_machine_id_from_storage(storage_path: &Path) -> Result<(), String> {
     if !storage_path.exists() {
         return Err("storage.json 不存在，无法同步 serviceMachineId".to_string());
@@ -340,6 +343,7 @@ pub fn save_global_original(profile: &DeviceProfile) -> Result<(), String> {
 }
 
 /// 罗列当前目录下的 storage.json 备份（按时间降序）
+#[allow(dead_code)]
 pub fn list_backups(storage_path: &Path) -> Result<Vec<PathBuf>, String> {
     let dir = storage_path
         .parent()
@@ -365,6 +369,7 @@ pub fn list_backups(storage_path: &Path) -> Result<Vec<PathBuf>, String> {
 }
 
 /// 将备份还原到 storage.json，优先 oldest=true 时用最早备份，否则用最新备份
+#[allow(dead_code)]
 pub fn restore_backup(storage_path: &Path, use_oldest: bool) -> Result<PathBuf, String> {
     let backups = list_backups(storage_path)?;
     if backups.is_empty() {

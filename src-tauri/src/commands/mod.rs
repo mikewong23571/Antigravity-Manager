@@ -716,88 +716,25 @@ pub async fn get_antigravity_args() -> Result<Vec<String>, String> {
 }
 
 /// 检测更新响应结构
-#[derive(serde::Serialize)]
-pub struct UpdateInfo {
-    has_update: bool,
-    latest_version: String,
-    current_version: String,
-    download_url: String,
-}
+pub use crate::modules::update_checker::UpdateInfo;
 
 /// 检测 GitHub releases 更新
 #[tauri::command]
 pub async fn check_for_updates() -> Result<UpdateInfo, String> {
-    const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
-    const GITHUB_API_URL: &str =
-        "https://api.github.com/repos/lbjlaq/Antigravity-Manager/releases/latest";
-
-    modules::logger::log_info("开始检测更新...");
-
-    // 发起 HTTP 请求
-    let client = crate::utils::http::create_client(15);
-    let response = client
-        .get(GITHUB_API_URL)
-        .header("User-Agent", "Antigravity-Tools")
-        .send()
-        .await
-        .map_err(|e| format!("请求失败: {}", e))?;
-
-    if !response.status().is_success() {
-        return Err(format!("GitHub API 返回错误: {}", response.status()));
-    }
-
-    // 解析 JSON 响应
-    let json: serde_json::Value = response
-        .json()
-        .await
-        .map_err(|e| format!("解析响应失败: {}", e))?;
-
-    let latest_version = json["tag_name"]
-        .as_str()
-        .ok_or("无法获取版本号")?
-        .trim_start_matches('v');
-
-    let download_url = json["html_url"]
-        .as_str()
-        .unwrap_or("https://github.com/lbjlaq/Antigravity-Manager/releases")
-        .to_string();
-
-    // 比较版本号
-    let has_update = compare_versions(latest_version, CURRENT_VERSION);
-
-    modules::logger::log_info(&format!(
-        "版本检测完成: 当前 v{}, 最新 v{}, 有更新: {}",
-        CURRENT_VERSION, latest_version, has_update
-    ));
-
-    Ok(UpdateInfo {
-        has_update,
-        latest_version: format!("v{}", latest_version),
-        current_version: format!("v{}", CURRENT_VERSION),
-        download_url,
-    })
+    crate::modules::update_checker::check_for_updates().await
 }
 
-/// 简单的版本号比较 (假设格式为 x.y.z)
-fn compare_versions(latest: &str, current: &str) -> bool {
-    let parse_version =
-        |v: &str| -> Vec<u32> { v.split('.').filter_map(|s| s.parse::<u32>().ok()).collect() };
-
-    let latest_parts = parse_version(latest);
-    let current_parts = parse_version(current);
-
-    for i in 0..3 {
-        let l = latest_parts.get(i).unwrap_or(&0);
-        let c = current_parts.get(i).unwrap_or(&0);
-        if l > c {
-            return true;
-        } else if l < c {
-            return false;
-        }
-    }
-
-    false
+#[tauri::command]
+pub async fn should_check_updates() -> Result<bool, String> {
+    let settings = crate::modules::update_checker::load_update_settings()?;
+    Ok(crate::modules::update_checker::should_check_for_updates(&settings))
 }
+
+#[tauri::command]
+pub async fn update_last_check_time() -> Result<(), String> {
+    crate::modules::update_checker::update_last_check_time()
+}
+
 
 /// 获取更新设置
 #[tauri::command]
@@ -813,12 +750,7 @@ pub async fn save_update_settings(
     crate::modules::update_checker::save_update_settings(&settings)
 }
 
-/// 检查是否应该自动检查更新
-#[tauri::command]
-pub async fn should_check_updates() -> Result<bool, String> {
-    let settings = crate::modules::update_checker::load_update_settings()?;
-    Ok(crate::modules::update_checker::should_check_for_updates(&settings))
-}
+
 
 /// 切换账号的反代禁用状态
 #[tauri::command]

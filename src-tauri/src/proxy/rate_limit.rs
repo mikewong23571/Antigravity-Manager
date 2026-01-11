@@ -18,6 +18,7 @@ pub enum RateLimitReason {
 }
 
 /// 限流信息
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct RateLimitInfo {
     /// 限流重置时间

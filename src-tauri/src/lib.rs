@@ -124,6 +124,7 @@ pub fn run() {
             commands::get_update_settings,
             commands::save_update_settings,
             commands::should_check_updates,
+            commands::update_last_check_time,
             commands::toggle_proxy_status,
             // 反代服务命令
             commands::proxy::start_proxy_service,

@@ -10,7 +10,7 @@ pub struct UpdateInfo {
     pub current_version: String,
     pub latest_version: String,
     pub has_update: bool,
-    pub release_url: String,
+    pub download_url: String, // 原为 release_url
     pub release_notes: String,
     pub published_at: String,
 }
@@ -78,7 +78,7 @@ pub async fn check_for_updates() -> Result<UpdateInfo, String> {
         current_version,
         latest_version,
         has_update,
-        release_url: release.html_url,
+        download_url: release.html_url,
         release_notes: release.body,
         published_at: release.published_at,
     })

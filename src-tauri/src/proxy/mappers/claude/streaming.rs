@@ -152,7 +152,9 @@ pub struct StreamingState {
     pub web_search_query: Option<String>,
     pub grounding_chunks: Option<Vec<serde_json::Value>>,
     // [IMPROVED] Error recovery 状态追踪
+    #[allow(dead_code)]
     parse_error_count: usize,
+    #[allow(dead_code)]
     last_valid_state: Option<BlockType>,
     // [NEW] Model tracking for signature cache
     pub model_name: Option<String>,
@@ -454,6 +456,7 @@ impl StreamingState {
     /// 1. 安全关闭当前 block
     /// 2. 递增错误计数器
     /// 3. 在 debug 模式下输出错误信息
+    #[allow(dead_code)]
     pub fn handle_parse_error(&mut self, raw_data: &str) -> Vec<Bytes> {
         let mut chunks = Vec::new();
 
@@ -504,12 +507,14 @@ impl StreamingState {
     }
 
     /// 重置错误状态 (recovery 后调用)
+    #[allow(dead_code)]
     pub fn reset_error_state(&mut self) {
         self.parse_error_count = 0;
         self.last_valid_state = None;
     }
 
     /// 获取错误计数 (用于监控)
+    #[allow(dead_code)]
     pub fn get_error_count(&self) -> usize {
         self.parse_error_count
     }
