@@ -1,5 +1,5 @@
 # Antigravity Tools 🚀
-> Professional AI Account Management & Proxy System (v3.3.16)
+> Professional AI Account Management & Proxy System (v3.3.22)
 
 <div align="center">
   <img src="public/icon.png" alt="Antigravity Logo" width="120" height="120" style="border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.15);">
@@ -9,7 +9,7 @@
   
   <p>
     <a href="https://github.com/lbjlaq/Antigravity-Manager">
-      <img src="https://img.shields.io/badge/Version-3.3.16-blue?style=flat-square" alt="Version">
+      <img src="https://img.shields.io/badge/Version-3.3.22-blue?style=flat-square" alt="Version">
     </a>
     <img src="https://img.shields.io/badge/Tauri-v2-orange?style=flat-square" alt="Tauri">
     <img src="https://img.shields.io/badge/Backend-Rust-red?style=flat-square" alt="Rust">
@@ -167,7 +167,28 @@ print(response.choices[0].message.content)
 
 ## 📝 Developer & Community
 
-    *   **v3.3.16 (2026-01-07)**:
+*   **Changelog**:
+    *   **v3.3.22 (2026-01-12)**:
+        - **Quota Protection System Upgrade**:
+            - Customizable monitored models (`gemini-3-flash`, `gemini-3-pro-high`, `claude-sonnet-4-5`), triggers protection only when selected models fall below threshold
+            - Protection logic optimized to "minimum quota of selected models" trigger mechanism
+            - Auto-selects `claude-sonnet-4-5` when enabling protection, UI enforces at least one model selection
+        - **Automated Quota Management Workflow**:
+            - Enforced background auto-refresh to ensure real-time quota data sync
+            - Automated execution of "Refresh → Protect → Restore → Warmup" complete lifecycle management
+        - **Customizable Smart Warmup**:
+            - Customizable warmup models (`gemini-3-flash`, `gemini-3-pro-high`, `claude-sonnet-4-5`, `gemini-3-pro-image`)
+            - New standalone `SmartWarmup.tsx` component with consistent selection experience as quota protection
+            - Auto-selects all core models when enabling warmup, UI enforces at least one model selection
+            - Scheduler reads config in real-time, changes take effect immediately
+        - **Smart Warmup System Foundation**:
+            - Auto-triggers warmup when quota recovers to 100%
+            - Smart deduplication: only warmup once per 100% cycle
+            - Scheduler scans every 10 minutes and syncs latest quota to frontend
+            - Covers all account types (Ultra/Pro/Free)
+        - **i18n Improvements**: Fixed missing translations for "Auto Check Update" and "Device Fingerprint" (Issue #550)
+        - **Stability Fixes**: Fixed variable reference and ownership conflicts under high-concurrency scheduling
+    *   **v3.3.21 (2026-01-11)**:
         - **Stability & Tool Fixes**:
             - **Grep/Glob Argument Fix (P3-5)**: Resolved "Error searching files" issue for Grep and Glob tools. Corrected parameter mapping: changed from `paths` (array) to `path` (string), and implemented case-insensitive tool name matching.
             - **RedactedThinking Support (P3-2)**: Gracefully downgrades redacted thinking blocks to text `[Redacted Thinking]`, preserving context instead of dropping data.
