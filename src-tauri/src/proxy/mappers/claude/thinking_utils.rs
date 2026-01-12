@@ -80,7 +80,24 @@ pub fn close_tool_loop_for_thinking(messages: &mut Vec<Message>) {
     // Exception: If thinking is NOT enabled for this request, we don't need to do this (handled by other logic).
     // But here we assume we are called because thinking IS enabled.
     if !has_thinking {
-        info!("[Thinking-Recovery] Detected broken tool loop (ToolResult without preceding Thinking). Injecting synthetic messages.");
+        let last_role = messages.last().map(|m| m.role.as_str()).unwrap_or("unknown");
+        let last_has_tool_result = messages.last().map(|m| {
+            if m.role != "user" {
+                return false;
+            }
+            if let MessageContent::Array(blocks) = &m.content {
+                return blocks.iter().any(|b| matches!(b, ContentBlock::ToolResult { .. }));
+            }
+            false
+        }).unwrap_or(false);
+
+        info!(
+            "[Thinking-Recovery] Detected broken tool loop (ToolResult without preceding Thinking). \
+             Injecting synthetic messages. last_role={} last_has_tool_result={} last_assistant_idx={:?}",
+            last_role,
+            last_has_tool_result,
+            state.last_assistant_idx
+        );
         
         // Strategy: 
         // 1. Inject a "fake" Assistant message saying "Tool execution completed."

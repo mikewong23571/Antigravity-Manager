@@ -164,6 +164,14 @@ impl NonStreamingProcessor {
     /// 处理单个 part
     fn process_part(&mut self, part: &GeminiPart) {
         let signature = part.thought_signature.clone();
+        if let Some(ref sig) = signature {
+            tracing::debug!(
+                "[Claude-Response] thought_signature received (len={}) has_function_call={} is_thought={}",
+                sig.len(),
+                part.function_call.is_some(),
+                part.thought.unwrap_or(false)
+            );
+        }
 
         // 1. FunctionCall 处理
         if let Some(fc) = &part.function_call {

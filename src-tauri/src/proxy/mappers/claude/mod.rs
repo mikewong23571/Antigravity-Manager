@@ -12,7 +12,7 @@ pub mod collector;
 pub use models::*;
 pub use request::transform_claude_request_in;
 pub use response::transform_response;
-pub use streaming::{PartProcessor, StreamingState};
+pub use streaming::{PartProcessor, StreamingState, BlockType};
 pub use thinking_utils::close_tool_loop_for_thinking;
 pub use collector::collect_stream_to_json;
 
@@ -25,14 +25,20 @@ pub fn create_claude_sse_stream(
     mut gemini_stream: Pin<Box<dyn Stream<Item = Result<Bytes, reqwest::Error>> + Send>>,
     trace_id: String,
     email: String,
+    warmup: bool,
 ) -> Pin<Box<dyn Stream<Item = Result<Bytes, String>> + Send>> {
     use async_stream::stream;
     use bytes::BytesMut;
     use futures::StreamExt;
+    use tracing::Level;
 
     Box::pin(stream! {
         let mut state = StreamingState::new();
         let mut buffer = BytesMut::new();
+        let capture_warmup = warmup && tracing::enabled!(Level::DEBUG);
+        let mut warmup_buf = String::new();
+        let mut warmup_truncated = false;
+        const WARMUP_SSE_MAX: usize = 8000;
 
         while let Some(chunk_result) = gemini_stream.next().await {
             match chunk_result {
@@ -48,6 +54,19 @@ pub fn create_claude_sse_stream(
 
                             if let Some(sse_chunks) = process_sse_line(line, &mut state, &trace_id, &email) {
                                 for sse_chunk in sse_chunks {
+                                    if capture_warmup && !warmup_truncated {
+                                        if let Ok(s) = std::str::from_utf8(&sse_chunk) {
+                                            let remaining = WARMUP_SSE_MAX.saturating_sub(warmup_buf.len());
+                                            if remaining == 0 {
+                                                warmup_truncated = true;
+                                            } else if s.len() <= remaining {
+                                                warmup_buf.push_str(s);
+                                            } else {
+                                                warmup_buf.push_str(&s[..remaining]);
+                                                warmup_truncated = true;
+                                            }
+                                        }
+                                    }
                                     yield Ok(sse_chunk);
                                 }
                             }
@@ -63,7 +82,31 @@ pub fn create_claude_sse_stream(
 
         // Ensure termination events are sent
         for chunk in emit_force_stop(&mut state) {
+            if capture_warmup && !warmup_truncated {
+                if let Ok(s) = std::str::from_utf8(&chunk) {
+                    let remaining = WARMUP_SSE_MAX.saturating_sub(warmup_buf.len());
+                    if remaining == 0 {
+                        warmup_truncated = true;
+                    } else if s.len() <= remaining {
+                        warmup_buf.push_str(s);
+                    } else {
+                        warmup_buf.push_str(&s[..remaining]);
+                        warmup_truncated = true;
+                    }
+                }
+            }
             yield Ok(chunk);
+        }
+
+        if capture_warmup && !warmup_buf.is_empty() {
+            tracing::debug!(
+                "[Warmup-SSE] trace_id={} email={} bytes={} truncated={}",
+                trace_id,
+                email,
+                warmup_buf.len(),
+                warmup_truncated
+            );
+            tracing::debug!("[Warmup-SSE] data:\n{}", warmup_buf);
         }
     })
 }
@@ -211,6 +254,8 @@ pub fn emit_force_stop(state: &mut StreamingState) -> Vec<Bytes> {
     vec![]
 }
 
+// Kept for future re-enable; currently unused while Cherry Studio compatibility is investigated.
+#[allow(dead_code)]
 /// Process grounding metadata from Gemini's googleSearch and emit as Claude web_search blocks
 #[allow(dead_code)]
 fn process_grounding_metadata(

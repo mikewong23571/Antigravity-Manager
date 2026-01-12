@@ -15,6 +15,7 @@ use tracing::{debug, error, info};
 use crate::proxy::mappers::claude::{
     transform_claude_request_in, transform_response, create_claude_sse_stream, ClaudeRequest,
     close_tool_loop_for_thinking,
+    StreamingState, BlockType,
 };
 use crate::proxy::server::AppState;
 use axum::http::HeaderMap;
@@ -70,44 +71,58 @@ fn sanitize_thinking_block(block: ContentBlock) -> ContentBlock {
 /// 过滤消息中的无效 thinking 块
 fn filter_invalid_thinking_blocks(messages: &mut Vec<Message>) {
     let mut total_filtered = 0;
-    
-    for msg in messages.iter_mut() {
+
+    for (msg_index, msg) in messages.iter_mut().enumerate() {
         // 只处理 assistant 消息
         // [CRITICAL FIX] Handle 'model' role too (Google history usage)
         if msg.role != "assistant" && msg.role != "model" {
             continue;
         }
-        tracing::error!("[DEBUG-FILTER] Inspecting msg with role: {}", msg.role);
-        
+
         if let MessageContent::Array(blocks) = &mut msg.content {
             let original_len = blocks.len();
+            let mut thinking_blocks = 0usize;
             
             // 过滤并清理
             let mut new_blocks = Vec::new();
-            for block in blocks.drain(..) {
-                if matches!(block, ContentBlock::Thinking { .. }) {
-                    // [DEBUG] 强制输出日志
-                    if let ContentBlock::Thinking { ref signature, .. } = block {
-                         tracing::error!("[DEBUG-FILTER] Found thinking block. Sig len: {:?}", signature.as_ref().map(|s| s.len()));
-                    }
+            for (block_index, block) in blocks.drain(..).enumerate() {
+                if let ContentBlock::Thinking { ref thinking, ref signature, .. } = block {
+                    thinking_blocks += 1;
+                    let sig_len = signature.as_ref().map(|s| s.len());
+                    let thinking_len = thinking.len();
+                    let is_valid = has_valid_signature(&block);
+                    tracing::debug!(
+                        "[Thinking-Filter] msg={} role={} block={} thinking_len={} sig_len={:?} valid={}",
+                        msg_index,
+                        msg.role,
+                        block_index,
+                        thinking_len,
+                        sig_len,
+                        is_valid
+                    );
 
                     // [CRITICAL FIX] Vertex AI 不认可 skip_thought_signature_validator
                     // 必须直接删除无效的 thinking 块
-                    if has_valid_signature(&block) {
+                    if is_valid {
                         new_blocks.push(sanitize_thinking_block(block));
                     } else {
                         // [IMPROVED] 保留内容转换为 text，而不是直接丢弃
-                        if let ContentBlock::Thinking { thinking, .. } = &block {
-                            if !thinking.is_empty() {
-                                tracing::info!(
-                                    "[Claude-Handler] Converting thinking block with invalid signature to text. \
-                                     Content length: {} chars",
-                                    thinking.len()
-                                );
-                                new_blocks.push(ContentBlock::Text { text: thinking.clone() });
-                            } else {
-                                tracing::debug!("[Claude-Handler] Dropping empty thinking block with invalid signature");
-                            }
+                        if !thinking.is_empty() {
+                            tracing::info!(
+                                "[Claude-Handler] Invalid thinking signature -> text (msg={}, block={}, thinking_len={}, sig_len={:?})",
+                                msg_index,
+                                block_index,
+                                thinking_len,
+                                sig_len
+                            );
+                            new_blocks.push(ContentBlock::Text { text: thinking.clone() });
+                        } else {
+                            tracing::debug!(
+                                "[Claude-Handler] Dropping empty invalid thinking block (msg={}, block={}, sig_len={:?})",
+                                msg_index,
+                                block_index,
+                                sig_len
+                            );
                         }
                     }
                 } else {
@@ -118,6 +133,16 @@ fn filter_invalid_thinking_blocks(messages: &mut Vec<Message>) {
             *blocks = new_blocks;
             let filtered_count = original_len - blocks.len();
             total_filtered += filtered_count;
+
+            if thinking_blocks > 0 {
+                tracing::debug!(
+                    "[Thinking-Filter] msg={} role={} thinking_blocks={} filtered={}",
+                    msg_index,
+                    msg.role,
+                    thinking_blocks,
+                    filtered_count
+                );
+            }
             
             // 如果过滤后为空,添加一个空文本块以保持消息有效
             if blocks.is_empty() {
@@ -159,6 +184,24 @@ fn remove_trailing_unsigned_thinking(blocks: &mut Vec<ContentBlock>) {
         blocks.truncate(end_index);
         debug!("Removed {} trailing unsigned thinking block(s)", removed);
     }
+}
+
+fn build_warmup_sse(model: &str, text: &str, trace_id: &str) -> Vec<Bytes> {
+    let mut state = StreamingState::new();
+    let raw_json = json!({
+        "modelVersion": model,
+        "responseId": format!("warmup_{}", trace_id),
+    });
+
+    let mut chunks = Vec::new();
+    chunks.push(state.emit_message_start(&raw_json));
+    chunks.extend(state.start_block(
+        BlockType::Text,
+        json!({ "type": "text", "text": "" }),
+    ));
+    chunks.push(state.emit_delta("text_delta", json!({ "text": text })));
+    chunks.extend(state.emit_finish(None, None));
+    chunks
 }
 
 // ===== 统一退避策略模块 =====
@@ -356,6 +399,41 @@ pub async fn handle_messages(
             ).into_response();
         }
     };
+
+    // Warmup short-circuit: return deterministic test response at service layer
+    if is_warmup_request(&request) {
+        let warmup_text = "Warmup OK. This is a test response from agy-tool-server.";
+        tracing::info!("[{}] Warmup short-circuit response", trace_id);
+
+        if request.stream {
+            let chunks = build_warmup_sse(&request.model, warmup_text, &trace_id);
+            let sse_stream = futures::stream::iter(chunks.into_iter().map(Ok::<Bytes, std::io::Error>));
+            return Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "text/event-stream")
+                .header(header::CACHE_CONTROL, "no-cache")
+                .header(header::CONNECTION, "keep-alive")
+                .body(Body::from_stream(sse_stream))
+                .unwrap();
+        }
+
+        let response_json = json!({
+            "id": format!("warmup_{}", trace_id),
+            "type": "message",
+            "role": "assistant",
+            "content": [
+                { "type": "text", "text": warmup_text }
+            ],
+            "model": request.model,
+            "stop_reason": "end_turn",
+            "stop_sequence": null,
+        });
+        return Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(serde_json::to_string(&response_json).unwrap()))
+            .unwrap();
+    }
 
     // [CRITICAL FIX] 过滤并修复 Thinking 块签名
     filter_invalid_thinking_blocks(&mut request.messages);
@@ -712,7 +790,13 @@ pub async fn handle_messages(
             if actual_stream {
                 let stream = response.bytes_stream();
                 let gemini_stream = Box::pin(stream);
-                let mut claude_stream = create_claude_sse_stream(gemini_stream, trace_id.clone(), email.clone());
+                let warmup = is_warmup_request(&request_with_mapped);
+                let mut claude_stream = create_claude_sse_stream(
+                    gemini_stream,
+                    trace_id.clone(),
+                    email.clone(),
+                    warmup,
+                );
 
                 // [FIX #530/#529] Peek first chunk to detect empty response and allow retry
                 // If the stream is empty or fails immediately, we should retry instead of sending 200 OK + empty body

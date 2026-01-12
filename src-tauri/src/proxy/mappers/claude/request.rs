@@ -196,8 +196,10 @@ pub fn transform_claude_request_in(
     if is_thinking_enabled {
         let should_disable = should_disable_thinking_due_to_history(&claude_req.messages);
         if should_disable {
-             tracing::warn!("[Thinking-Mode] Automatically disabling thinking checks due to incompatible tool-use history (mixed application)");
-             is_thinking_enabled = false;
+            tracing::warn!(
+                "[Thinking-Mode] Automatically disabling thinking checks due to incompatible tool-use history (mixed application)"
+            );
+            is_thinking_enabled = false;
         }
     }
 
@@ -205,6 +207,7 @@ pub fn transform_claude_request_in(
     // disable thinking to prevent Gemini 3 Pro rejection
     if is_thinking_enabled {
         let global_sig = get_thought_signature();
+        let global_sig_len = global_sig.as_ref().map(|s| s.len());
         
         // Check if there are any thinking blocks in message history
         let has_thinking_history = claude_req.messages.iter().any(|m| {
@@ -231,6 +234,15 @@ pub fn transform_claude_request_in(
         // we use permissive mode and let upstream handle validation.
         // We only enforce strict signature checks when function calls are involved.
         let needs_signature_check = has_function_calls;
+
+        tracing::debug!(
+            "[Thinking-Mode] signature-check preflight: mapped_model={} messages={} has_thinking_history={} has_function_calls={} global_sig_len={:?}",
+            mapped_model,
+            claude_req.messages.len(),
+            has_thinking_history,
+            has_function_calls,
+            global_sig_len
+        );
         
         if !has_thinking_history && is_thinking_enabled {
              tracing::info!(
@@ -244,7 +256,12 @@ pub fn transform_claude_request_in(
         {
             tracing::warn!(
                 "[Thinking-Mode] [FIX #295] No valid signature found for function calls. \
-                 Disabling thinking to prevent Gemini 3 Pro rejection."
+                 Disabling thinking to prevent Gemini 3 Pro rejection. \
+                 (messages={}, has_thinking_history={}, has_function_calls={}, global_sig_len={:?})",
+                claude_req.messages.len(),
+                has_thinking_history,
+                has_function_calls,
+                global_sig_len
             );
             is_thinking_enabled = false;
         }
