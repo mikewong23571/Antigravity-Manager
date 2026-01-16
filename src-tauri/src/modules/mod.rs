@@ -14,6 +14,7 @@ pub mod i18n;
 pub mod proxy_db;
 pub mod device;
 pub mod update_checker;
+#[cfg(feature = "ui")]
 pub mod scheduler;
 
 use crate::models;

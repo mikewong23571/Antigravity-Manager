@@ -205,7 +205,8 @@ pub fn resolve_model_route(
     }
 
     // 4. 检查家族分组映射 (Anthropic 系)
-    if lower_model.starts_with("claude-") {
+    // 仅在允许应用 Claude 家族映射时启用；否则直接下沉到默认映射
+    if apply_claude_family_mapping && lower_model.starts_with("claude-") {
         // 对于内置表中已定义为直通的模型，跳过家族映射，直接返回
         if let Some(mapped) = CLAUDE_TO_GEMINI.get(original_model) {
             if *mapped == original_model {
